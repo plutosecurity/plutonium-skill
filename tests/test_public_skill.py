@@ -34,15 +34,15 @@ class PublicSkillTests(unittest.TestCase):
         self.assertIn("\nname: plutonium-skill\n", skill_text)
         self.assertIn("# Plutonium Skill", skill_text)
         self.assertIn("$plutonium-skill", interface_text)
-        self.assertEqual(helper.VERSION, "0.11.0")
+        self.assertEqual(helper.VERSION, "0.1.0")
         self.assertEqual(packager.SKILL_NAME, "plutonium-skill")
-        self.assertEqual(packager.VERSION, "0.11.0")
+        self.assertEqual(packager.VERSION, "0.1.0")
 
     def test_package_is_reproducible_and_exact(self):
         with tempfile.TemporaryDirectory() as first_dir, tempfile.TemporaryDirectory() as second_dir:
             first = packager.build_zip(Path(first_dir))
             second = packager.build_zip(Path(second_dir))
-            self.assertEqual(first.name, "plutonium-skill-0.11.0.zip")
+            self.assertEqual(first.name, "plutonium-skill-0.1.0.zip")
             self.assertEqual(first.read_bytes(), second.read_bytes())
             with zipfile.ZipFile(first) as archive:
                 self.assertEqual(
@@ -87,6 +87,21 @@ class PublicSkillTests(unittest.TestCase):
         ]
         for path in public_files:
             self.assertNotIn("plutonium-analysis", path.read_text(encoding="utf-8"))
+
+    def test_skill_discloses_truncated_capability_highlights(self):
+        skill_text = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("TOTAL_CAPABILITY_COUNT capabilities", skill_text)
+        self.assertIn("Capability highlights (SHOWN of TOTAL)", skill_text)
+        self.assertIn("Capability highlights (3 of 5)", skill_text)
+        self.assertIn("Never present a truncated list as the complete capability set", skill_text)
+
+    def test_market_space_output_is_positive_but_precise(self):
+        skill_text = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("handpicked and reviewed", skill_text)
+        self.assertIn("Detail only open `fail` and `needs_review` findings", skill_text)
+        self.assertIn("include it only when additional open findings were omitted", skill_text)
+        self.assertIn("Verified Plutonium catalog · Updated READABLE_PUBLISHED_DATE", skill_text)
+        self.assertNotIn("Verified signed Plutonium catalog · Published", skill_text)
 
 
 if __name__ == "__main__":

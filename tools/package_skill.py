@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and deterministically package Plutonium Skill v0.11.0."""
+"""Validate and deterministically package Plutonium Skill v0.1.0."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILL_NAME = "plutonium-skill"
-VERSION = "0.11.0"
+VERSION = "0.1.0"
 SKILL_DIR = ROOT / "skills" / SKILL_NAME
 PACKAGE_FILES = (
     Path("SKILL.md"),
@@ -31,7 +31,7 @@ TRUSTED_PUBLIC_KEY_SHA256 = (
     "5f08f28346541f07e3de4b938c5592730006bf168043c6ae3b9eabfe1e1c541c"
 )
 APPROVED_HELPER_SHA256 = (
-    "6e8f8b1047fdf50ead8403d9d5693d06411a4b10c1d8d33e9e7b8ec46571c2fa"
+    "1e230beca5457bcc511d87a78556f48b60de7e08d36bc8d4e74a700c038a1f5e"
 )
 TRUST_KEYS = {
     "schema_version",
@@ -176,7 +176,7 @@ def validate_skill_source() -> dict[Path, bytes]:
     validate_helper_ast(helper_source, str(helper_relative))
     if sha256_bytes(source[helper_relative]) != APPROVED_HELPER_SHA256:
         raise SystemExit(
-            "Helper bytes differ from the security-reviewed v0.11.0 implementation"
+            "Helper bytes differ from the security-reviewed v0.1.0 implementation"
         )
     if "subprocess.run" not in helper_source:
         raise SystemExit("Helper must use subprocess argv arrays without a shell")

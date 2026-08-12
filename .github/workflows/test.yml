@@ -21,4 +21,4 @@ jobs:
       - name: Build and verify Skill archive
         run: |
           python3 tools/package_skill.py
-          unzip -t dist/plutonium-skill-0.11.0.zip
+          unzip -t dist/plutonium-skill-0.1.0.zip

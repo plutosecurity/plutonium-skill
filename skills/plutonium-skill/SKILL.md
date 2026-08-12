@@ -69,7 +69,7 @@ For `kind: "risk_rating"`:
 - Map `low` to `🟢`, `medium` to `🟠`, and `high` or `critical` to `🔴`.
 - Treat `level: "none"` as unrated. State that Plutonium has no current risk verdict and provide no safety conclusion.
 - State the published rating and strongest supported reason. Do not call the item legitimate, functional, trustworthy, or verified unless the result explicitly supports that claim.
-- Build `At a glance` only from `item.compact_summary`: include a positive `tools_count` and at most three returned `capability_highlights`. Never infer a capability from tags, names, descriptions, or product knowledge.
+- Build `At a glance` only from `item.compact_summary`: show a positive `tools_count` and a positive `capability_flag_count` as separate totals. On the next line, show at most the three returned `capability_highlights`. Label that line `Capabilities` when every capability is shown. When `capability_flag_count` exceeds the number shown, label it `Capability highlights (SHOWN of TOTAL)`. Never infer a capability from tags, names, descriptions, or product knowledge.
 - Ground key risks only in returned `security_risks`, `risky_tools`, or `compact_summary.critical_high_tool_highlights`. Show at most the two returned security risks and use `security_risk_count` for the full total.
 - If `critical_high_tool_count` is positive, state the full count and name every returned `critical_high_tool_highlights` entry. If `critical_high_tool_omitted_count` is positive, state explicitly that this many additional critical/high tools were not named in the compact result. Never leave a returned critical/high destructive, code-execution, payment, credential, or infrastructure warning only behind the Plutonium link.
 - Do not interpret `risky_tool_counts.total: 0` as proof that every tool is safe; it means no tool-level warning was published.
@@ -79,10 +79,11 @@ For `kind: "risk_rating"`:
 
 For `kind: "trusted_membership"`:
 
-- State that the item is listed in Plutonium's reviewed Market-Space; do not translate membership into “safe” or a Low-risk verdict.
+- State positively that Plutonium handpicked and reviewed the item for its Market-Space; do not translate membership into “safe” or a Low-risk verdict.
 - Report `source_risk_level` as a separate source signal, not as the membership decision.
 - Build the review snapshot from `item.assessment.principle_count`, `item.assessment.principle_concern_count`, and `item.assessment.principle_summary`; do not calculate it from prose. Read the separate source signal from `item.assessment.source_risk_level`.
 - Surface `item.assessment.principle_concerns` entries with `fail` before `needs_review`. Show at most two open findings, except that every returned failure must be shown even when this exceeds the compact limit.
+- Detail only open `fail` and `needs_review` findings in the compact response. Represent passed and not-applicable principles only in the review snapshot; the Plutonium CTA provides the complete review.
 - Recommend reviewing the listed concerns and granting only the required access.
 
 ## Respond to a match
@@ -96,7 +97,9 @@ Use the matching compact structure below unless the user asks for detail. Transl
 
 **Bottom line:** ONE_SENTENCE_VERDICT
 
-**At a glance:** POSITIVE_TOOL_COUNT tools · CAPABILITY_HIGHLIGHT · CAPABILITY_HIGHLIGHT · CAPABILITY_HIGHLIGHT
+**At a glance:** POSITIVE_TOOL_COUNT tools · TOTAL_CAPABILITY_COUNT capabilities
+
+**Capabilities:** CAPABILITY_HIGHLIGHT · CAPABILITY_HIGHLIGHT · CAPABILITY_HIGHLIGHT
 
 **Top security risks (SHOWN of TOTAL)**
 - FIRST_RETURNED_RISK
@@ -108,12 +111,14 @@ Use the matching compact structure below unless the user asks for detail. Transl
 
 ### [DYNAMIC_RISK_CTA →](PLUTONIUM_URL)
 
-*Verified signed Plutonium catalog · Published READABLE_PUBLISHED_DATE*
+*Verified Plutonium catalog · Updated READABLE_PUBLISHED_DATE*
 
 *Based on Plutonium's catalog assessment—not a guarantee of safety. Review the tool's permissions and your environment before installing.*
 ```
 
-- Omit `At a glance`, its tool fragment, missing capability fragments, the risks section, the count suffix, or the tools warning when their required verified data is absent.
+- Omit `At a glance`, its missing total fragments, the capabilities line, the risks section, the count suffix, or the tools warning when their required verified data is absent. If both totals are absent, omit `At a glance` entirely.
+- When all returned capabilities are shown, use `Capabilities`. When some are omitted, replace that label with `Capability highlights (SHOWN of TOTAL)`, using the returned `capability_flag_count` as `TOTAL`.
+- For three returned highlights out of five capabilities, render `Capability highlights (3 of 5)`. Never present a truncated list as the complete capability set.
 - Build the count suffix only when `security_risk_count` exceeds the number displayed.
 - Keep critical/high tool warnings even when this exceeds the usual compact length.
 
@@ -122,7 +127,7 @@ Use the matching compact structure below unless the user asks for detail. Transl
 ```markdown
 ## 🔵 NAME — Market-Space Listed
 
-**Bottom line:** Plutonium lists NAME in its reviewed Market-Space. That membership is not a “safe” or Low Risk verdict.
+**Bottom line:** Plutonium handpicked and reviewed NAME for its Market-Space. Its source risk signal is SOURCE_RISK_LEVEL, but TOTAL_CONCERNS of PRINCIPLE_COUNT review areas still need attention.
 
 **Review snapshot:** PRINCIPLE_COUNT principles checked · NEEDS_REVIEW_COUNT need review · FAIL_COUNT failed
 
@@ -136,12 +141,14 @@ Use the matching compact structure below unless the user asks for detail. Transl
 
 ### [DYNAMIC_MARKETPLACE_CTA →](PLUTONIUM_URL)
 
-*Verified signed Plutonium catalog · Published READABLE_PUBLISHED_DATE*
+*Verified Plutonium catalog · Updated READABLE_PUBLISHED_DATE*
 
 *Market-Space membership is not a guarantee of safety. Review permissions and your environment before installing.*
 ```
 
-- Omit zero or absent snapshot fragments, the source signal, the findings section, or the count suffix rather than inventing content.
+- Omit the source-signal clause from the Bottom line when that signal is absent. When there are no open concerns, state that no open findings were reported in the current review without calling the item universally safe.
+- Omit zero or absent snapshot fragments, the source signal, or the findings section rather than inventing content.
+- Show only open `fail` and `needs_review` findings. Omit `(SHOWN of TOTAL_CONCERNS)` when every open finding is displayed; include it only when additional open findings were omitted.
 
 ### Dynamic CTA
 

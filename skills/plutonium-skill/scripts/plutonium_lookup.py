@@ -23,7 +23,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse, urlunparse
 
 
-VERSION = "0.11.0"
+VERSION = "0.1.0"
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 TRUST_PATH = SKILL_ROOT / "references" / "trust.json"
 PUBLIC_KEY_PATH = SKILL_ROOT / "references" / "catalog-signing-public.pem"
