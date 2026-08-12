@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plutonium Skill"
+  short_description: "Check AI tool security with Plutonium"
+  default_prompt: "Use $plutonium-skill to assess an AI connector, MCP server, plugin, extension, or skill."
