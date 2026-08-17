@@ -1,6 +1,6 @@
 # Plutonium Skill
 
-The official Plutonium Skill brings Plutonium's signed security assessments into Claude. It helps users review AI connectors, desktop extensions, MCP servers, plugins, and skills across Claude, Microsoft Copilot, and the Plutonium Market-Space.
+The official Plutonium Skill brings Plutonium's signed security assessments into Claude, Codex, and Cursor. It helps users review AI connectors, desktop extensions, MCP servers, plugins, and skills across Claude, Microsoft Copilot, and the Plutonium Market-Space.
 
 The Skill is read-only. It does not install, enable, disable, configure, or execute the product being assessed.
 
@@ -12,11 +12,41 @@ The Skill is read-only. It does not install, enable, disable, configure, or exec
 - Clear handling of ambiguous product names across ecosystems
 - A direct link to the complete assessment on [Plutonium](https://plutonium.pluto.security/)
 
-## Install in Claude
+## Install
+
+The published ZIP is identical for every host. Only the skills directory differs:
+
+| Host | Skills directory |
+| --- | --- |
+| Claude Code | `~/.claude/skills` |
+| Codex CLI | `${CODEX_HOME:-~/.codex}/skills` |
+| Cursor | `~/.cursor/skills` |
+
+### Claude.ai
 
 1. Download the ZIP from the [latest GitHub release](https://github.com/plutosecurity/plutonium-skill/releases/latest). Each release also includes a `SHA256SUMS` file for verification.
-2. In Claude, open **Customize → Skills → + → Create skill → Upload a skill**.
+2. Open **Customize → Skills → + → Create skill → Upload a skill**.
 3. Upload the downloaded ZIP without extracting it, then enable **Plutonium Skill**.
+
+### Claude Code, Codex CLI, and Cursor
+
+Set `SKILLS_DIR` to the row above for your host, then run:
+
+```bash
+SKILLS_DIR="$HOME/.claude/skills"  # or "${CODEX_HOME:-$HOME/.codex}/skills", or "$HOME/.cursor/skills"
+skill_zip="$(mktemp -t plutonium-skill)"
+curl -fsSL "https://github.com/plutosecurity/plutonium-skill/releases/download/v0.1.0/plutonium-skill-0.1.0.zip" -o "$skill_zip"
+echo "0c506fb8a35c171df33f85bb630f26d3b161bbfdde08f0bb2718c3c08ff2484c  $skill_zip" | shasum -a 256 -c -
+mkdir -p "$SKILLS_DIR"
+unzip -oq "$skill_zip" -d "$SKILLS_DIR"
+rm -f "$skill_zip"
+```
+
+Restart the host afterwards so it rediscovers its skills directory.
+
+The helper resolves `git` and `openssl` from a fixed POSIX path allowlist, so it runs on macOS, Linux, and WSL. On a host that cannot reach those tools it returns `status: unavailable` with `reason_code: environment_unsupported` and gives no rating.
+
+Codex sandboxes network access by default. Approve the escalation when the Skill fetches the signed catalog; without it the lookup fails closed as `unavailable`.
 
 Try prompts such as:
 
