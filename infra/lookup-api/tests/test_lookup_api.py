@@ -2,6 +2,8 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -314,6 +316,60 @@ class LookupApiTests(unittest.TestCase):
                     now=datetime(2026, 9, 11, 13, 0, tzinfo=timezone.utc),
                 )
         self.assertIn("expired", str(context.exception))
+
+    def test_deploy_refuses_wrong_account_before_sam(self):
+        deploy_script = ROOT / "deploy.sh"
+        with tempfile.TemporaryDirectory() as directory:
+            temp_root = Path(directory)
+            fake_bin = temp_root / "bin"
+            fake_bin.mkdir()
+            call_log = temp_root / "calls.log"
+            catalog_path = temp_root / "catalog.json"
+            manifest_path = temp_root / "manifest.json"
+            catalog_path.write_text("{}", encoding="utf-8")
+            manifest_path.write_text("{}", encoding="utf-8")
+
+            scripts = {
+                "python3": "#!/bin/sh\nprintf 'python3\\n' >> \"$CALL_LOG\"\n",
+                "sam": "#!/bin/sh\nprintf 'sam %s\\n' \"$*\" >> \"$CALL_LOG\"\nexit 99\n",
+                "aws": (
+                    "#!/bin/sh\n"
+                    "printf 'aws %s\\n' \"$*\" >> \"$CALL_LOG\"\n"
+                    "case \"$*\" in\n"
+                    "  *'sts get-caller-identity'*) printf '000000000000\\n'; exit 0 ;;\n"
+                    "esac\n"
+                    "exit 99\n"
+                ),
+            }
+            for name, source in scripts.items():
+                path = fake_bin / name
+                path.write_text(source, encoding="utf-8")
+                path.chmod(0o755)
+
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "CALL_LOG": str(call_log),
+                    "PATH": f"{fake_bin}:/usr/bin:/bin",
+                    "AWS_REGION": "eu-central-1",
+                    "PLUTONIUM_AWS_ACCOUNT_ID": "391458701307",
+                }
+            )
+            completed = subprocess.run(
+                ["/bin/bash", str(deploy_script), str(catalog_path), str(manifest_path)],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=environment,
+            )
+            calls = call_log.read_text(encoding="utf-8")
+
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("Refusing deployment to AWS account 000000000000", completed.stderr)
+        call_lines = calls.splitlines()
+        self.assertEqual(call_lines[0], "python3")
+        self.assertIn("sts get-caller-identity", call_lines[1])
+        self.assertNotIn("sam ", calls)
 
     @staticmethod
     def event(*, body, content_type="application/json"):

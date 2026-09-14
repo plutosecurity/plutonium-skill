@@ -34,6 +34,8 @@ Use the bundled read-only helper to make one bounded HTTPS lookup against Pluton
 
    Do not turn this array into a command string, use `sh -c`, add quoting manually, or substitute the raw query into shell syntax.
 
+   For a request naming multiple products, split it into one helper invocation per product. Never combine several product names into one query. Pace calls at no more than two per second; if any lookup is rate-limited, report that item as unavailable rather than retrying or replacing it with another source.
+
    If the execution surface accepts only a Bash command string, first encode the exact query's UTF-8 bytes as canonical RFC 4648 base64 using a non-shell data transform. Verify that the result is one token containing only `A-Z`, `a-z`, `0-9`, `+`, `/`, and up to two trailing `=` characters. Then substitute only that safe token into this fixed command; never place the raw query in it:
 
    ```bash

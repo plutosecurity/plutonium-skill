@@ -4,7 +4,7 @@ There are two identities with different permissions. Do not give the public Lamb
 
 ## Lambda runtime role
 
-An administrator should deploy [`execution-role.yaml`](execution-role.yaml), or create the equivalent role named `plutonium-catalog-lookup-execution-prod` in `eu-central-1`.
+An administrator should run [`../bootstrap_execution_role.sh`](../bootstrap_execution_role.sh), which deploys [`execution-role.yaml`](execution-role.yaml), or create the equivalent role named `plutonium-catalog-lookup-execution-prod` in `eu-central-1`.
 
 The role trusts only `lambda.amazonaws.com` and has:
 

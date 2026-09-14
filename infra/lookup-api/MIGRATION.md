@@ -2,10 +2,10 @@
 
 Follow this order so existing Skill installations fail closed rather than receiving unverified data.
 
-1. Have an administrator create the Lambda execution role from `iam/execution-role.yaml`.
+1. Have an administrator run `bootstrap_execution_role.sh` to create the Lambda execution role from `iam/execution-role.yaml`.
 2. Obtain the scoped deployment permissions documented in `iam/README.md`.
 3. Install AWS CLI and AWS SAM CLI locally and authenticate to the production AWS account in `eu-central-1`.
-4. Check out or generate the newest catalog release, confirm its manifest has not expired, and run `deploy.sh` with its `release/catalog.json` and `release/manifest.json` paths. The publisher rejects expired releases.
+4. Check out or generate the newest catalog release, confirm its manifest has not expired, and run `deploy.sh` with its `release/catalog.json` and `release/manifest.json` paths. The publisher validates the release before AWS changes and rejects expired releases.
 5. Verify `/v1/health`, one exact match, one ambiguous match, one no-match query, one detailed lookup, and visible throttling under a short controlled burst.
 6. Run the full test suite and `python3 tools/package_skill.py --release`.
 7. Update the README installation version and checksum, publish the v0.2.0 Skill release, and test a clean installation from the release asset.

@@ -32,7 +32,7 @@ Catalog pointers older than 45 days fail closed so a forgotten deployment cannot
 
 ## Before the first deployment
 
-An AWS administrator deploys [`iam/execution-role.yaml`](iam/execution-role.yaml) once in `eu-central-1`, or creates an equivalent role named `plutonium-catalog-lookup-execution-prod`. The role can read only objects in the dedicated bucket prefix and write Lambda logs.
+An AWS administrator runs [`bootstrap_execution_role.sh`](bootstrap_execution_role.sh) once in `eu-central-1`, or creates an equivalent role named `plutonium-catalog-lookup-execution-prod` from [`iam/execution-role.yaml`](iam/execution-role.yaml). The role can read only objects in the dedicated bucket prefix and write Lambda logs.
 
 The deployment identity needs permission to manage the scoped Lambda, HTTP API, S3 bucket and log groups, to pass that execution role, and to deploy the CloudFormation stack. `sam deploy --resolve-s3` also needs access to its SAM artifact bucket.
 
@@ -43,12 +43,16 @@ Requirements: AWS CLI, AWS SAM CLI, Python 3.9+, and an authenticated AWS sessio
 From the repository root:
 
 ```bash
-AWS_REGION=eu-central-1 ./infra/lookup-api/deploy.sh \
+AWS_PROFILE=YOUR_PROFILE AWS_REGION=eu-central-1 \
+  ./infra/lookup-api/bootstrap_execution_role.sh
+
+AWS_PROFILE=YOUR_PROFILE AWS_REGION=eu-central-1 \
+  ./infra/lookup-api/deploy.sh \
   ../plutonium-catalog-data/release/catalog.json \
   ../plutonium-catalog-data/release/manifest.json
 ```
 
-The script validates and deploys the stack, rejects an expired catalog manifest, publishes the immutable catalog object, atomically updates `current.json`, reads the generated API endpoint, and writes that endpoint into the Skill's `references/api.json`.
+The scripts refuse to deploy outside AWS account `391458701307` and `eu-central-1` by default. Override the account guard only for an intentional alternate account by setting `PLUTONIUM_AWS_ACCOUNT_ID`. `deploy.sh` requires explicit catalog and manifest paths, validates them before changing infrastructure, validates and deploys the stack, publishes the immutable catalog object, atomically updates `current.json`, reads the generated API endpoint, and writes that endpoint into the Skill's `references/api.json`. The catalog files are deployment inputs and must not be committed to this public repository.
 
 For a catalog-only update after the stack exists:
 
