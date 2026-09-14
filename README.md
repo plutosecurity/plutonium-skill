@@ -1,6 +1,6 @@
 # Plutonium Skill
 
-The official Plutonium Skill brings Plutonium's signed security assessments into Claude, Codex, and Cursor. It helps users review AI connectors, desktop extensions, MCP servers, plugins, and skills across Claude, Microsoft Copilot, and the Plutonium Market-Space.
+The official Plutonium Skill brings Plutonium's current security assessments into Claude, Codex, and Cursor. It helps users review AI connectors, desktop extensions, MCP servers, plugins, and skills across Claude, Microsoft Copilot, and the Plutonium Market-Space.
 
 The Skill is read-only. It does not install, enable, disable, configure, or execute the product being assessed.
 
@@ -44,9 +44,7 @@ rm -f "$skill_zip"
 
 Restart the host afterwards so it rediscovers its skills directory.
 
-The helper resolves `git` and `openssl` from a fixed POSIX path allowlist, so it runs on macOS, Linux, and WSL. On a host that cannot reach those tools it returns `status: unavailable` with `reason_code: environment_unsupported` and gives no rating.
-
-Codex sandboxes network access by default. Approve the escalation when the Skill fetches the signed catalog; without it the lookup fails closed as `unavailable`.
+The helper uses Python's standard HTTPS client, so it has no Git, OpenSSL CLI, or third-party package dependency. Codex sandboxes network access by default; without approved access to the lookup endpoint, the helper fails closed as `unavailable` and gives no rating.
 
 Try prompts such as:
 
@@ -57,9 +55,9 @@ Try prompts such as:
 
 ## How it works
 
-The bundled helper performs a fresh, read-only Git fetch from the public [`plutonium-catalog-data`](https://github.com/plutosecurity/plutonium-catalog-data) repository. Before returning an assessment, it verifies the release tag, publisher signature, pinned public key, manifest schema, catalog hash, byte length, and record counts.
+The bundled helper sends one product query to a rate-limited AWS API and validates the bounded response before exposing it to the agent. The API reads a hash-verified catalog from a private, encrypted, versioned S3 bucket. There is no public list, export, pagination, or raw-catalog endpoint.
 
-The helper never checks out or executes catalog repository content. It reads a fixed set of signed data files and emits a bounded JSON result. The Skill does not use Web Search, Web Fetch, MCP, or a connector as its assessment transport.
+The helper never downloads or executes catalog content. The Skill does not use Web Search, Web Fetch, MCP, or a connector as its assessment transport. Infrastructure and deployment details are in [`infra/lookup-api`](infra/lookup-api/README.md).
 
 ## Repository layout
 
@@ -69,8 +67,7 @@ skills/plutonium-skill/
 ├── LICENSE
 ├── agents/openai.yaml
 ├── references/
-│   ├── catalog-signing-public.pem
-│   └── trust.json
+│   └── api.json
 └── scripts/plutonium_lookup.py
 ```
 
@@ -78,7 +75,7 @@ skills/plutonium-skill/
 
 ## Build and test
 
-Requirements: Python 3.9+, Git, and OpenSSL.
+Requirements: Python 3.9+.
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -86,6 +83,8 @@ python3 tools/package_skill.py
 ```
 
 The generated archive is written to `dist/`.
+
+Use `python3 tools/package_skill.py --release` for a release build. It refuses to package while the API endpoint is still the pre-deployment placeholder.
 
 ## Security
 

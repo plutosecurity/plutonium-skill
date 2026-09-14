@@ -3,6 +3,7 @@ name: Test
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
 
 permissions:
@@ -16,9 +17,15 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Run public tests
-        run: python3 -m unittest discover -s tests -v
+        run: |
+          python3 -m unittest discover -s tests -v
+          python3 -m unittest discover -s infra/lookup-api/tests -v
 
       - name: Build and verify Skill archive
         run: |
-          python3 tools/package_skill.py
-          unzip -t dist/plutonium-skill-0.1.0.zip
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            python3 tools/package_skill.py --release
+          else
+            python3 tools/package_skill.py
+          fi
+          unzip -t dist/plutonium-skill-0.2.0.zip

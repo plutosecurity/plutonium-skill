@@ -1,0 +1,174 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Rate-limited Plutonium catalog lookup API backed by a private S3 bucket.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues:
+      - dev
+      - prod
+  ExecutionRoleName:
+    Type: String
+    Default: plutonium-catalog-lookup-execution-prod
+    Description: Pre-created Lambda execution role. The deployer only needs iam:PassRole for this role.
+  ThrottlingRateLimit:
+    Type: Number
+    Default: 2
+    MinValue: 0.1
+    Description: Steady-state requests per second for the API stage.
+  ThrottlingBurstLimit:
+    Type: Number
+    Default: 5
+    MinValue: 1
+    Description: Short API Gateway burst allowance.
+  ReservedConcurrency:
+    Type: Number
+    Default: 5
+    MinValue: 1
+    Description: Hard cap on concurrent lookup Lambda executions.
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Architectures:
+      - arm64
+    MemorySize: 512
+    Timeout: 15
+    Tracing: PassThrough
+    Tags:
+      Service: plutonium-catalog-lookup
+      Environment: !Ref Environment
+
+Resources:
+  CatalogBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub plutonium-catalog-lookup-${AWS::AccountId}-${AWS::Region}-${Environment}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+            BucketKeyEnabled: false
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldNoncurrentVersions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+      Tags:
+        - Key: Service
+          Value: plutonium-catalog-lookup
+        - Key: Environment
+          Value: !Ref Environment
+
+  CatalogBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CatalogBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !GetAtt CatalogBucket.Arn
+              - !Sub ${CatalogBucket.Arn}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+  LookupFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/plutonium-catalog-lookup-${Environment}
+      RetentionInDays: 30
+
+  ApiAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/apigateway/plutonium-catalog-lookup-${Environment}
+      RetentionInDays: 30
+
+  LookupApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Name: !Sub plutonium-catalog-lookup-${Environment}
+      Description: Public single-product lookup API; no bulk catalog route.
+      StageName: $default
+      DefaultRouteSettings:
+        DetailedMetricsEnabled: true
+        ThrottlingRateLimit: !Ref ThrottlingRateLimit
+        ThrottlingBurstLimit: !Ref ThrottlingBurstLimit
+      AccessLogSettings:
+        DestinationArn: !GetAtt ApiAccessLogGroup.Arn
+        Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","routeKey":"$context.routeKey","status":"$context.status","responseLength":"$context.responseLength","integrationError":"$context.integrationErrorMessage"}'
+      Tags:
+        Service: plutonium-catalog-lookup
+        Environment: !Ref Environment
+
+  LookupFunction:
+    Type: AWS::Serverless::Function
+    DependsOn:
+      - LookupFunctionLogGroup
+    Properties:
+      FunctionName: !Sub plutonium-catalog-lookup-${Environment}
+      Description: Returns one bounded Plutonium assessment from a private catalog.
+      CodeUri: src/
+      Handler: handler.lambda_handler
+      Role: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ExecutionRoleName}
+      ReservedConcurrentExecutions: !Ref ReservedConcurrency
+      Environment:
+        Variables:
+          CATALOG_BUCKET: !Ref CatalogBucket
+          CATALOG_POINTER_KEY: current.json
+          CATALOG_CACHE_TTL_SECONDS: "60"
+      Events:
+        Lookup:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LookupApi
+            Path: /v1/lookup
+            Method: POST
+            PayloadFormatVersion: "2.0"
+            TimeoutInMillis: 15000
+        Health:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref LookupApi
+            Path: /v1/health
+            Method: GET
+            PayloadFormatVersion: "2.0"
+            TimeoutInMillis: 3000
+
+Outputs:
+  ApiBaseUrl:
+    Description: API Gateway invoke URL. Append /v1/lookup for the Skill.
+    Value: !Sub https://${LookupApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}
+  LookupEndpoint:
+    Description: Full endpoint to configure in the public Skill.
+    Value: !Sub https://${LookupApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/v1/lookup
+  CatalogBucketName:
+    Description: Private bucket that receives immutable catalog releases and current.json.
+    Value: !Ref CatalogBucket
+  LookupFunctionName:
+    Value: !Ref LookupFunction
