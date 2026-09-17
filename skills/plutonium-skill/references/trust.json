@@ -1,1 +1,0 @@
-{"public_key_sha256":"5f08f28346541f07e3de4b938c5592730006bf168043c6ae3b9eabfe1e1c541c","repository":"https://github.com/plutosecurity/plutonium-catalog-data.git","schema_version":1,"tag_pattern":"^catalog-v([0-9]{10})$"}

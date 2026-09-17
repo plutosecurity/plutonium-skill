@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and deterministically package Plutonium Skill v0.1.0."""
+"""Validate and deterministically package Plutonium Skill v0.2.0."""
 
 from __future__ import annotations
 
@@ -11,34 +11,26 @@ import json
 import re
 import zipfile
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILL_NAME = "plutonium-skill"
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 SKILL_DIR = ROOT / "skills" / SKILL_NAME
 PACKAGE_FILES = (
     Path("SKILL.md"),
     Path("LICENSE"),
     Path("agents/openai.yaml"),
     Path("scripts/plutonium_lookup.py"),
-    Path("references/trust.json"),
-    Path("references/catalog-signing-public.pem"),
+    Path("references/api.json"),
 )
 EXECUTABLE_FILES = {Path("scripts/plutonium_lookup.py")}
-ZIP_TIMESTAMP = (2026, 8, 12, 0, 0, 0)
-TRUSTED_PUBLIC_KEY_SHA256 = (
-    "5f08f28346541f07e3de4b938c5592730006bf168043c6ae3b9eabfe1e1c541c"
-)
+ZIP_TIMESTAMP = (2026, 9, 11, 0, 0, 0)
 APPROVED_HELPER_SHA256 = (
-    "1e230beca5457bcc511d87a78556f48b60de7e08d36bc8d4e74a700c038a1f5e"
+    "08647685fcb40272a42d9e9e9e6f2972020f20069cfa5113aa186bdd85d2b68f"
 )
-TRUST_KEYS = {
-    "schema_version",
-    "repository",
-    "tag_pattern",
-    "public_key_sha256",
-}
+PLACEHOLDER_HOST = "replace-after-deploy.invalid"
 
 
 def sha256_file(path: Path) -> str:
@@ -85,52 +77,61 @@ def validate_helper_ast(source: str, filename: str) -> None:
         "locals",
         "setattr",
     }
+    forbidden_modules = {"ctypes", "importlib", "os", "shutil", "socket", "subprocess"}
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for imported in node.names:
-                if imported.name in {"os", "subprocess"} and imported.asname:
-                    raise SystemExit(
-                        f"Helper may not alias the {imported.name} module"
-                    )
-        if isinstance(node, ast.ImportFrom) and node.module in {
-            "builtins",
-            "os",
-            "subprocess",
-        }:
-            raise SystemExit(f"Helper may not import names from {node.module}")
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        if isinstance(node.func, ast.Name) and node.func.id in forbidden_names:
-            raise SystemExit(f"Helper may not call {node.func.id}()")
-        if isinstance(node.func, ast.Attribute):
-            owner = node.func.value
-            if isinstance(owner, ast.Name) and owner.id == "os" and node.func.attr == "system":
-                raise SystemExit("Helper may not call os.system()")
-            if node.func.attr in {"Popen", "call", "check_call", "check_output", "system"}:
-                raise SystemExit(f"Helper may not call {node.func.attr}()")
-            if isinstance(owner, ast.Name) and owner.id == "subprocess":
-                if node.func.attr != "run":
-                    raise SystemExit(
-                        f"Helper may not call subprocess.{node.func.attr}()"
-                    )
-                for keyword in node.keywords:
-                    if keyword.arg is None:
-                        raise SystemExit(
-                            "Helper subprocess calls may not expand keyword dictionaries"
-                        )
-                    if keyword.arg == "shell" and not (
-                        isinstance(keyword.value, ast.Constant)
-                        and keyword.value.value is False
-                    ):
-                        raise SystemExit("Helper subprocess calls may not enable a shell")
+                if imported.name.split(".", 1)[0] in forbidden_modules:
+                    raise SystemExit(f"Helper may not import {imported.name}")
+        if isinstance(node, ast.ImportFrom) and (node.module or "").split(".", 1)[0] in forbidden_modules:
+            raise SystemExit(f"Helper may not import from {node.module}")
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            if node.func.id in forbidden_names:
+                raise SystemExit(f"Helper may not call {node.func.id}()")
 
 
-def validate_skill_source() -> dict[Path, bytes]:
-    missing = [str(relative) for relative in PACKAGE_FILES if not (SKILL_DIR / relative).is_file()]
+def validate_api_config(payload: bytes, *, release: bool) -> None:
+    try:
+        raw = json.loads(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SystemExit("references/api.json is invalid") from exc
+    if not isinstance(raw, dict) or set(raw) != {"endpoint", "schema_version"}:
+        raise SystemExit("references/api.json must use the exact approved schema")
+    if raw["schema_version"] != 1 or not isinstance(raw["endpoint"], str):
+        raise SystemExit("references/api.json values are invalid")
+    try:
+        parsed = urlparse(raw["endpoint"])
+        port = parsed.port
+    except ValueError as exc:
+        raise SystemExit("references/api.json endpoint is invalid") from exc
+    host = (parsed.hostname or "").casefold()
+    host_allowed = host.endswith(
+        ".execute-api.eu-central-1.amazonaws.com"
+    ) or host.endswith(".pluto.security")
+    if host == PLACEHOLDER_HOST and not release:
+        host_allowed = True
+    if (
+        parsed.scheme != "https"
+        or not host_allowed
+        or port is not None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path != "/v1/lookup"
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise SystemExit("references/api.json endpoint is not an approved lookup endpoint")
+    if release and host == PLACEHOLDER_HOST:
+        raise SystemExit("release blocked: configure the deployed API endpoint first")
+
+
+def validate_skill_source(*, release: bool = False) -> dict[Path, bytes]:
+    missing = [
+        str(relative) for relative in PACKAGE_FILES if not (SKILL_DIR / relative).is_file()
+    ]
     if missing:
         raise SystemExit("Missing required skill files: " + ", ".join(missing))
-
     for path in SKILL_DIR.rglob("*"):
         if path.is_symlink():
             raise SystemExit(
@@ -145,20 +146,21 @@ def validate_skill_source() -> dict[Path, bytes]:
     if actual_files != set(PACKAGE_FILES):
         extras = sorted(str(path) for path in actual_files - set(PACKAGE_FILES))
         raise SystemExit("Unexpected skill files: " + ", ".join(extras))
-    source = {relative: (SKILL_DIR / relative).read_bytes() for relative in PACKAGE_FILES}
-
+    source = {
+        relative: (SKILL_DIR / relative).read_bytes() for relative in PACKAGE_FILES
+    }
     try:
         skill_text = source[Path("SKILL.md")].decode("utf-8")
     except UnicodeDecodeError as exc:
         raise SystemExit("SKILL.md must be UTF-8") from exc
     validate_frontmatter(skill_text)
     required_phrases = (
-        "signed public data catalog",
+        "rate-limited API",
         "Microsoft Copilot",
         "MCP servers",
         "trusted_membership",
         "Do not use Web Search, Web Fetch, MCP",
-        "latest signed Plutonium catalog could not be reached or verified",
+        "current Plutonium lookup service could not be reached or verified",
         "At a glance",
         "Top security risks",
         "Open review findings",
@@ -167,46 +169,27 @@ def validate_skill_source() -> dict[Path, bytes]:
     for phrase in required_phrases:
         if phrase not in skill_text:
             raise SystemExit(f"SKILL.md is missing required rule: {phrase!r}")
-
     helper_relative = Path("scripts/plutonium_lookup.py")
     try:
         helper_source = source[helper_relative].decode("utf-8")
     except UnicodeDecodeError as exc:
         raise SystemExit("Helper must be UTF-8") from exc
     validate_helper_ast(helper_source, str(helper_relative))
-    if sha256_bytes(source[helper_relative]) != APPROVED_HELPER_SHA256:
-        raise SystemExit(
-            "Helper bytes differ from the security-reviewed v0.1.0 implementation"
-        )
-    if "subprocess.run" not in helper_source:
-        raise SystemExit("Helper must use subprocess argv arrays without a shell")
-
-    trust_relative = Path("references/trust.json")
-    public_key_relative = Path("references/catalog-signing-public.pem")
-    try:
-        trust = json.loads(source[trust_relative].decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise SystemExit("trust.json is invalid") from exc
-    if not isinstance(trust, dict) or set(trust) != TRUST_KEYS:
-        raise SystemExit("trust.json must use the exact approved schema")
-    if trust.get("schema_version") != 1:
-        raise SystemExit("trust.json schema version is invalid")
-    if trust.get("repository") != "https://github.com/plutosecurity/plutonium-catalog-data.git":
-        raise SystemExit("trust.json repository is invalid")
-    if trust.get("tag_pattern") != r"^catalog-v([0-9]{10})$":
-        raise SystemExit("trust.json tag pattern is invalid")
-    public_key_bytes = source[public_key_relative]
-    if (
-        trust.get("public_key_sha256") != TRUSTED_PUBLIC_KEY_SHA256
-        or sha256_bytes(public_key_bytes) != TRUSTED_PUBLIC_KEY_SHA256
-    ):
-        raise SystemExit("catalog public key does not match the pinned trust root")
-    try:
-        public_key = public_key_bytes.decode("ascii")
-    except UnicodeDecodeError as exc:
-        raise SystemExit("Catalog public key must be ASCII PEM") from exc
-    if "BEGIN PUBLIC KEY" not in public_key or "PRIVATE KEY" in public_key:
-        raise SystemExit("Skill must contain only the catalog public key")
+    digest = sha256_bytes(source[helper_relative])
+    if digest != APPROVED_HELPER_SHA256:
+        raise SystemExit("Helper bytes differ from the security-reviewed v0.2.0 implementation")
+    forbidden_text = (
+        "plutonium-catalog-data",
+        "release/catalog.json",
+        "git clone",
+        "git fetch",
+        "BEGIN PRIVATE KEY",
+    )
+    combined = b"\n".join(source.values()).decode("utf-8")
+    for phrase in forbidden_text:
+        if phrase.casefold() in combined.casefold():
+            raise SystemExit(f"Public Skill package contains forbidden transport text: {phrase}")
+    validate_api_config(source[Path("references/api.json")], release=release)
     return source
 
 
@@ -232,8 +215,8 @@ def render_zip(source: dict[Path, bytes]) -> bytes:
     return output.getvalue()
 
 
-def build_zip(output_dir: Path) -> Path:
-    source = validate_skill_source()
+def build_zip(output_dir: Path, *, release: bool = False) -> Path:
+    source = validate_skill_source(release=release)
     output_dir.mkdir(parents=True, exist_ok=True)
     output = output_dir / f"{SKILL_NAME}-{VERSION}.zip"
     archive_bytes = render_zip(source)
@@ -241,11 +224,11 @@ def build_zip(output_dir: Path) -> Path:
         raise SystemExit("ZIP rendering is not deterministic")
     output.write_bytes(archive_bytes)
     with zipfile.ZipFile(output) as archive:
-        expected = [(Path(SKILL_NAME) / relative).as_posix() for relative in PACKAGE_FILES]
+        expected = [
+            (Path(SKILL_NAME) / relative).as_posix() for relative in PACKAGE_FILES
+        ]
         if archive.namelist() != expected:
             raise SystemExit("ZIP contents do not match the approved skill package")
-        if any(info.filename.endswith("/") for info in archive.infolist()):
-            raise SystemExit("ZIP must not contain directory entries")
         for relative, archive_name in zip(PACKAGE_FILES, expected):
             if archive.read(archive_name) != source[relative]:
                 raise SystemExit(f"ZIP member changed after validation: {archive_name}")
@@ -255,14 +238,21 @@ def build_zip(output_dir: Path) -> Path:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=ROOT / "dist")
+    parser.add_argument(
+        "--release",
+        action="store_true",
+        help="require a deployed endpoint and enforce all release gates",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    output = build_zip(args.output_dir.resolve())
+    output = build_zip(args.output_dir.resolve(), release=args.release)
     print(f"Created Plutonium Skill v{VERSION}: {output}")
     print(f"SHA-256: {sha256_file(output)}")
+    if not args.release:
+        print("Development build only; use --release for the publication gate.")
     return 0
 
 
