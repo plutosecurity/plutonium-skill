@@ -1,30 +1,52 @@
-# AWS permission handoff
+# AWS permissions for the Plutonium lookup service
 
-There are two identities with different permissions. Do not give the public Lambda deployment permissions.
+This deployment uses two separate identities. The human deployer manages the
+infrastructure; the Lambda runtime role can only read the private catalog and
+write its own logs.
+
+## Plutonium Identity Center permission set
+
+Attach [`plutonium-deployer-policy.json`](plutonium-deployer-policy.json) as an
+inline policy to the existing `Plutonium` permission set. It is scoped to AWS
+account `391458701307`, Region `eu-central-1`, and resources used by this
+service. The policy covers both first-time commands:
+
+```bash
+AWS_PROFILE=plutonium-prod AWS_REGION=eu-central-1 \
+  ./infra/lookup-api/bootstrap_execution_role.sh
+
+AWS_PROFILE=plutonium-prod AWS_REGION=eu-central-1 \
+  ./infra/lookup-api/deploy.sh /path/to/catalog.json /path/to/manifest.json
+```
+
+The policy grants the exact actions required to:
+
+- deploy the two `plutonium-catalog-lookup-*` CloudFormation stacks;
+- create and manage the lookup Lambda function and HTTP API;
+- create and manage the dedicated private catalog bucket;
+- package Lambda code in the SAM-managed deployment bucket;
+- create the dedicated Lambda execution role and pass only that role to
+  Lambda;
+- create and configure the service's CloudWatch log groups and API access-log
+  delivery.
+
+It does not grant access to unrelated Lambda functions, IAM roles, S3 buckets,
+or CloudFormation stacks. API Gateway does not provide a resource ARN before
+an HTTP API is created, so API Gateway management is limited by Region and API
+resource path rather than by the generated API ID.
+
+Organization service-control policies, permission boundaries, or session
+policies can still deny an action allowed by this policy.
 
 ## Lambda runtime role
 
-An administrator should run [`../bootstrap_execution_role.sh`](../bootstrap_execution_role.sh), which deploys [`execution-role.yaml`](execution-role.yaml), or create the equivalent role named `plutonium-catalog-lookup-execution-prod` in `eu-central-1`.
+The bootstrap command deploys [`execution-role.yaml`](execution-role.yaml) and
+creates `plutonium-catalog-lookup-execution-prod`. It trusts only
+`lambda.amazonaws.com` and grants:
 
-The role trusts only `lambda.amazonaws.com` and has:
-
-- `s3:GetObject` and `s3:GetObjectVersion` only under `plutonium-catalog-lookup-<account>-eu-central-1-prod/*`;
+- `s3:GetObject` and `s3:GetObjectVersion` under the dedicated catalog bucket;
 - `s3:GetBucketLocation` on that bucket;
-- the AWS-managed `AWSLambdaBasicExecutionRole` policy for CloudWatch logs.
+- the AWS-managed `AWSLambdaBasicExecutionRole` policy for Lambda logs.
 
-It does not have S3 write access and cannot create or modify AWS infrastructure.
-
-## Human deployment permission set
-
-The existing `Plutonium` Identity Center permission set needs scoped management access for:
-
-- Lambda function `plutonium-catalog-lookup-*`, including code/configuration updates, reserved concurrency, tags, and API Gateway invoke permissions;
-- API Gateway v2 API/stage/route/integration resources for `plutonium-catalog-lookup-*`;
-- the dedicated S3 bucket `plutonium-catalog-lookup-*-eu-central-1-*`, including bucket configuration and object upload;
-- CloudWatch log groups `/aws/lambda/plutonium-catalog-lookup-*` and `/aws/apigateway/plutonium-catalog-lookup-*`. Enabling HTTP API access logging also requires the CloudWatch Logs delivery actions AWS documents on `Resource: *`: `CreateLogDelivery`, `PutResourcePolicy`, `UpdateLogDelivery`, `DeleteLogDelivery`, `DescribeResourcePolicies`, `GetLogDelivery`, and `ListLogDeliveries`;
-- `iam:PassRole` only for `plutonium-catalog-lookup-execution-*`, with `iam:PassedToService` restricted to `lambda.amazonaws.com`;
-- CloudFormation stack `plutonium-catalog-lookup-*` and the SAM packaging bucket used by `sam deploy`.
-
-If Gil deploys the first stack on your behalf, the ongoing human permissions can be narrower: publish new catalog objects, update the function/configuration, read logs/metrics, and read the stack outputs.
-
-The Policy Simulator checks performed earlier covered the four direct creation actions. A SAM deployment additionally uses CloudFormation and CloudWatch Logs, so those must either be added to the permission set or handled by Gil during the initial deployment.
+The runtime role cannot upload catalog data or create, update, or delete AWS
+infrastructure. Do not attach the human deployment policy to this role.
