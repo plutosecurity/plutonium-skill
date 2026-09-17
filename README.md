@@ -57,7 +57,7 @@ Try prompts such as:
 
 The bundled helper sends one product query to a rate-limited AWS API and validates the bounded response before exposing it to the agent. The API reads a hash-verified catalog from a private, encrypted, versioned S3 bucket. There is no public list, export, pagination, or raw-catalog endpoint.
 
-The helper never downloads or executes catalog content. The Skill does not use Web Search, Web Fetch, MCP, or a connector as its assessment transport. Infrastructure and deployment details are in [`infra/lookup-api`](infra/lookup-api/README.md).
+The helper never downloads or executes catalog content. The Skill does not use Web Search, Web Fetch, MCP, or a connector as its assessment transport. The lookup service and its deployment infrastructure are maintained separately in the private Plutonium repository.
 
 ## Repository layout
 
