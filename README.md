@@ -35,8 +35,8 @@ Set `SKILLS_DIR` to the row above for your host, then run:
 ```bash
 SKILLS_DIR="$HOME/.claude/skills"  # or "${CODEX_HOME:-$HOME/.codex}/skills", or "$HOME/.cursor/skills"
 skill_zip="$(mktemp -t plutonium-skill)"
-curl -fsSL "https://github.com/plutosecurity/plutonium-skill/releases/download/v0.1.0/plutonium-skill-0.1.0.zip" -o "$skill_zip"
-echo "0c506fb8a35c171df33f85bb630f26d3b161bbfdde08f0bb2718c3c08ff2484c  $skill_zip" | shasum -a 256 -c -
+curl -fsSL "https://github.com/plutosecurity/plutonium-skill/releases/download/v0.2.0/plutonium-skill-0.2.0.zip" -o "$skill_zip"
+echo "5c1cebd90902214aa29af331dc298142bd676fc3633483d98993d7add5224ee1  $skill_zip" | shasum -a 256 -c -
 mkdir -p "$SKILLS_DIR"
 unzip -oq "$skill_zip" -d "$SKILLS_DIR"
 rm -f "$skill_zip"
