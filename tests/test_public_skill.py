@@ -71,10 +71,9 @@ class PublicSkillTests(unittest.TestCase):
             packager.APPROVED_HELPER_SHA256,
         )
 
-    def test_release_build_is_blocked_until_endpoint_is_configured(self):
-        with self.assertRaises(SystemExit) as context:
-            packager.validate_skill_source(release=True)
-        self.assertIn("approved lookup endpoint", str(context.exception))
+    def test_release_build_accepts_configured_production_endpoint(self):
+        source = packager.validate_skill_source(release=True)
+        self.assertIn(Path("references/api.json"), source)
 
     def test_query_base64_mode_preserves_unicode(self):
         query = "HUE エージェント"
@@ -82,10 +81,11 @@ class PublicSkillTests(unittest.TestCase):
         parsed = helper.parse_args(["--query-base64", token])
         self.assertEqual(parsed.query, query)
 
-    def test_placeholder_fails_closed_without_networking(self):
-        with self.assertRaises(helper.LookupError) as context:
-            helper.load_endpoint()
-        self.assertEqual(context.exception.reason_code, "endpoint_unconfigured")
+    def test_production_endpoint_loads_from_config(self):
+        self.assertEqual(
+            helper.load_endpoint(),
+            "https://v4m0umvde5.execute-api.eu-central-1.amazonaws.com/v1/lookup",
+        )
 
     def test_only_expected_production_endpoint_hosts_are_accepted(self):
         endpoint = "https://abc.execute-api.eu-central-1.amazonaws.com/v1/lookup"
